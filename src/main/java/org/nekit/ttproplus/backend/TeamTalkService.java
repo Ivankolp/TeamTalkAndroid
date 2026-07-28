@@ -108,6 +108,7 @@ import org.nekit.ttproplus.data.MyTextMessage;
 import org.nekit.ttproplus.data.Preferences;
 import org.nekit.ttproplus.data.ServerEntry;
 import org.nekit.ttproplus.data.UserCached;
+import dk.bearware.MediaFilePlayback;
 import dk.bearware.events.ClientEventListener;
 import dk.bearware.events.TeamTalkEventHandler;
 import org.nekit.ttproplus.gui.CmdComplete;
@@ -190,6 +191,33 @@ public class TeamTalkService extends Service
     Map<Integer, Vector<MyTextMessage>> usertxtmsgs = new HashMap<>();
     Vector<MyTextMessage> chatlogtxtmsgs = new Vector<>();
     Map<String, UserCached> usercache = new HashMap<>();
+
+    private org.nekit.ttproplus.gui.FloatingWindowManager mFloatingWindowManager;
+    private final SharedPreferences.OnSharedPreferenceChangeListener mPrefListener = new SharedPreferences.OnSharedPreferenceChangeListener() {
+        @Override
+        public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+            if (org.nekit.ttproplus.data.Preferences.PREF_BG_MGMT_ENABLED.equals(key) ||
+                org.nekit.ttproplus.data.Preferences.PREF_BG_MGMT_SHOW_VOICE.equals(key) ||
+                org.nekit.ttproplus.data.Preferences.PREF_BG_MGMT_SHOW_MUTE.equals(key) ||
+                org.nekit.ttproplus.data.Preferences.PREF_BG_MGMT_SHOW_PING.equals(key) ||
+                org.nekit.ttproplus.data.Preferences.PREF_BG_MGMT_SHOW_CHAT.equals(key) ||
+                org.nekit.ttproplus.data.Preferences.PREF_BG_MGMT_SHOW_CHANNELS.equals(key)) {
+                if (mFloatingWindowManager != null) {
+                    mFloatingWindowManager.checkAndShow();
+                }
+            }
+        }
+    };
+
+    public void updateFloatingWindow() {
+        if (mFloatingWindowManager != null) {
+            mFloatingWindowManager.updateUI();
+        }
+    }
+
+    public org.nekit.ttproplus.gui.FloatingWindowManager getFloatingWindowManager() {
+        return mFloatingWindowManager;
+    }
 
     private long antispam_window_start = 0;
     private int antispam_count = 0;
@@ -347,6 +375,12 @@ public class TeamTalkService extends Service
         }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
         mediaSession.setActive(true);
         Log.d(TAG, "Created TeamTalk 5 service");
+
+        mFloatingWindowManager = new org.nekit.ttproplus.gui.FloatingWindowManager(this);
+        mFloatingWindowManager.checkAndShow();
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        prefs.registerOnSharedPreferenceChangeListener(mPrefListener);
     }
 
     @Override
@@ -382,6 +416,13 @@ public class TeamTalkService extends Service
         mEventHandler.unregisterListener(this);
         disablePhoneCallReaction();
         unwatchBluetoothHeadset();
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        prefs.unregisterOnSharedPreferenceChangeListener(mPrefListener);
+        if (mFloatingWindowManager != null) {
+            mFloatingWindowManager.hide();
+            mFloatingWindowManager = null;
+        }
 
         if (ttclient != null)
             ttclient.closeTeamTalk();
@@ -423,7 +464,7 @@ public class TeamTalkService extends Service
                     .setContentText(getNotificationText())
                     .setShowWhen(false)
                     .build();
-                ServiceCompat.startForeground(this, UI_WIDGET_ID, widget, ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST);
+                ServiceCompat.startForeground(this, UI_WIDGET_ID, widget, getMyForegroundServiceType());
             } else {
                 widget = new NotificationCompat.Builder(this, widget)
                     .setContentText(getNotificationText())
@@ -434,6 +475,14 @@ public class TeamTalkService extends Service
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
             widget = null;
         }
+    }
+
+    private int getMyForegroundServiceType() {
+        int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+        if (mediaProjection != null) {
+            type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+        }
+        return type;
     }
 
     private void adjustMuteOnTx(boolean txEnabled) {
@@ -583,10 +632,107 @@ public class TeamTalkService extends Service
         if (vox) ttclient.enableVoiceActivation(true);
     }
 
+    private boolean isRecording = false;
+    private java.io.File currentRecordingFile = null;
+
+    public boolean isRecording() {
+        return isRecording;
+    }
+
+    public java.io.File getCurrentRecordingFile() {
+        return currentRecordingFile;
+    }
+
+    public void startRecording() {
+        if (isRecording) return;
+        if (mychannel == null) return;
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+
+        // Determine recording directory
+        String customPath = prefs.getString(Preferences.PREF_RECORDING_PATH, "");
+        java.io.File dir;
+        if (!customPath.isEmpty()) {
+            dir = new java.io.File(customPath);
+        } else {
+            dir = new java.io.File(getExternalFilesDir(null), "Recordings");
+        }
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+        // Determine format and extension
+        String format = prefs.getString(Preferences.PREF_RECORDING_FORMAT, "wav");
+        int audioFormat;
+        String extension;
+        switch (format) {
+            case "mp3":
+                String bitrate = prefs.getString(Preferences.PREF_RECORDING_MP3_BITRATE, "128");
+                switch (bitrate) {
+                    case "16": audioFormat = dk.bearware.AudioFileFormat.AFF_MP3_16KBIT_FORMAT; break;
+                    case "32": audioFormat = dk.bearware.AudioFileFormat.AFF_MP3_32KBIT_FORMAT; break;
+                    case "64": audioFormat = dk.bearware.AudioFileFormat.AFF_MP3_64KBIT_FORMAT; break;
+                    case "256": audioFormat = dk.bearware.AudioFileFormat.AFF_MP3_256KBIT_FORMAT; break;
+                    case "320": audioFormat = dk.bearware.AudioFileFormat.AFF_MP3_320KBIT_FORMAT; break;
+                    default: audioFormat = dk.bearware.AudioFileFormat.AFF_MP3_128KBIT_FORMAT; break;
+                }
+                extension = ".mp3";
+                break;
+            case "codec":
+                audioFormat = dk.bearware.AudioFileFormat.AFF_CHANNELCODEC_FORMAT;
+                extension = ".ogg";
+                break;
+            default:
+                audioFormat = dk.bearware.AudioFileFormat.AFF_WAVE_FORMAT;
+                extension = ".wav";
+                break;
+        }
+
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US);
+        String name = mychannel.szName.replaceAll("[^a-zA-Z0-9_-]", "_") + "_" + sdf.format(new java.util.Date()) + extension;
+        java.io.File file = new java.io.File(dir, name);
+        currentRecordingFile = file;
+
+        isRecording = ttclient.startRecordingMuxedAudioFile(mychannel.audiocodec, file.getAbsolutePath(), audioFormat);
+        if (isRecording) {
+            Log.d("bearware", "Recording started: " + file.getAbsolutePath());
+            Toast.makeText(getApplicationContext(), getString(R.string.recording_started, file.getName()), Toast.LENGTH_SHORT).show();
+        } else {
+            Log.e("bearware", "Failed to start recording");
+            Toast.makeText(getApplicationContext(), R.string.recording_start_failed, Toast.LENGTH_SHORT).show();
+            currentRecordingFile = null;
+        }
+    }
+
+    public java.io.File stopRecording() {
+        if (!isRecording) return null;
+        ttclient.stopRecordingMuxedAudioFile();
+        isRecording = false;
+        java.io.File recordedFile = currentRecordingFile;
+        currentRecordingFile = null;
+        Log.d("bearware", "Recording stopped");
+        Toast.makeText(getApplicationContext(), R.string.recording_stopped, Toast.LENGTH_SHORT).show();
+        return recordedFile;
+    }
+
+    public boolean shouldShowRecordingDialog() {
+        return PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+            .getBoolean(Preferences.PREF_RECORDING_SHOW_DIALOG, true);
+    }
+
     private void setMyChannel(Channel chan) {
         this.mychannel = chan;
 
         setupAudioPreprocessor();
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+        if (chan != null) {
+            if (prefs.getBoolean("auto_record_conversations", false)) {
+                startRecording();
+            }
+        } else {
+            stopRecording();
+        }
     }
 
     public TeamTalkBase getTTInstance() {
@@ -644,36 +790,285 @@ public class TeamTalkService extends Service
         if ((isMute() != permanentMuteState) &&
             !(prefs.getBoolean(Preferences.PREF_SOUNDSYSTEM_MUTE_ON_TRANSMISSION, false) && isVoiceTransmitting()))
             ttclient.setSoundOutputMute(permanentMuteState);
+        updateFloatingWindow();
     }
 
     public void enableVoiceTransmission(boolean enable) {
+        String inputSource = PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getString("audio_input_source", "mic");
+        boolean useInternal = "internal".equals(inputSource) || "mixed".equals(inputSource);
         if (enable) {
             txSuspended = false;
             voxSuspended = false;
-            int indevid = getPreferredSoundInputDeviceId();
-            if (((ttclient.getFlags() & ClientFlag.CLIENT_SNDINPUT_READY) != 0) || ttclient.initSoundInputDevice(indevid))
+            if (useInternal) {
                 ttclient.enableVoiceTransmission(true);
+                startInternalAudioCapture();
+            } else {
+                int indevid = getPreferredSoundInputDeviceId();
+                if (((ttclient.getFlags() & ClientFlag.CLIENT_SNDINPUT_READY) != 0) || ttclient.initSoundInputDevice(indevid))
+                    ttclient.enableVoiceTransmission(true);
+            }
         }
         else {
+            if (useInternal) {
+                stopInternalAudioCapture();
+            }
             ttclient.enableVoiceTransmission(false);
             ttclient.closeSoundInputDevice();
         }
         adjustMuteOnTx(enable);
+        updateFloatingWindow();
     }
 
+    // Media projection and internal audio recording variables
+    private android.media.projection.MediaProjection mediaProjection;
+    private android.media.AudioRecord internalAudioRecord;
+    private android.media.AudioRecord micAudioRecord;
+    private Thread internalAudioThread;
+    private boolean isInternalAudioRunning = false;
+    private static int mediaProjectionResultCode = 0;
+    private static Intent mediaProjectionData = null;
+
+    private static void mixPcm(byte[] buffer1, byte[] buffer2, byte[] outBuffer, int length) {
+        for (int i = 0; i < length; i += 2) {
+            short s1 = (short) ((buffer1[i] & 0xFF) | (buffer1[i + 1] << 8));
+            short s2 = (short) ((buffer2[i] & 0xFF) | (buffer2[i + 1] << 8));
+            int mixed = s1 + s2;
+            if (mixed > 32767) mixed = 32767;
+            else if (mixed < -32768) mixed = -32768;
+            outBuffer[i] = (byte) (mixed & 0xFF);
+            outBuffer[i + 1] = (byte) ((mixed >> 8) & 0xFF);
+        }
+    }
+
+    public void setMediaProjectionData(int resultCode, Intent data) {
+        mediaProjectionResultCode = resultCode;
+        mediaProjectionData = data;
+    }
+
+    public static boolean hasMediaProjectionData() {
+        return mediaProjectionData != null;
+    }
+
+    private void startInternalAudioCapture() {
+        if (isInternalAudioRunning) return;
+        if (mediaProjectionData == null) {
+            Log.e("bearware", "No media projection data available");
+            return;
+        }
+
+        isInternalAudioRunning = true;
+        internalAudioThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                android.media.projection.MediaProjectionManager projectionManager = 
+                    (android.media.projection.MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                if (projectionManager == null) return;
+                
+                if (mediaProjection == null) {
+                    try {
+                        mediaProjection = projectionManager.getMediaProjection(mediaProjectionResultCode, (Intent) mediaProjectionData.clone());
+                    } catch (Exception e) {
+                        Log.e("bearware", "Failed to get MediaProjection", e);
+                        isInternalAudioRunning = false;
+                        return;
+                    }
+                }
+
+                if (mediaProjection == null) {
+                    isInternalAudioRunning = false;
+                    return;
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    try {
+                        android.media.AudioPlaybackCaptureConfiguration config = new android.media.AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+                            .addMatchingUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                            .addMatchingUsage(android.media.AudioAttributes.USAGE_GAME)
+                            .addMatchingUsage(android.media.AudioAttributes.USAGE_UNKNOWN)
+                            .build();
+
+                        int sampleRate = 48000;
+                        int channelConfig = android.media.AudioFormat.CHANNEL_IN_MONO;
+                        int audioFormat = android.media.AudioFormat.ENCODING_PCM_16BIT;
+                        int minBufSize = android.media.AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+                        if (minBufSize < 3840) minBufSize = 3840;
+
+                        internalAudioRecord = new android.media.AudioRecord.Builder()
+                            .setAudioFormat(new android.media.AudioFormat.Builder()
+                                .setEncoding(audioFormat)
+                                .setSampleRate(sampleRate)
+                                .setChannelMask(channelConfig)
+                                .build())
+                            .setAudioPlaybackCaptureConfig(config)
+                            .setBufferSizeInBytes(minBufSize)
+                            .build();
+
+                        internalAudioRecord.startRecording();
+
+                        boolean mixMic = "mixed".equals(PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getString("audio_input_source", "mic"));
+                        if (mixMic) {
+                            int micMinBuf = android.media.AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
+                            if (micMinBuf < 3840) micMinBuf = 3840;
+                            try {
+                                micAudioRecord = new android.media.AudioRecord(
+                                    android.media.MediaRecorder.AudioSource.MIC,
+                                    sampleRate,
+                                    channelConfig,
+                                    audioFormat,
+                                    micMinBuf
+                                );
+                                micAudioRecord.startRecording();
+                            } catch (Exception e) {
+                                Log.e("bearware", "Failed to start microphone for mixed mode", e);
+                                mixMic = false;
+                            }
+                        }
+
+                        int blockSize = 960;
+                        byte[] buffer = new byte[blockSize * 2];
+                        byte[] micBuffer = mixMic ? new byte[blockSize * 2] : null;
+                        byte[] mixedBuffer = mixMic ? new byte[blockSize * 2] : null;
+                        int sampleIndex = 0;
+
+                        while (isInternalAudioRunning) {
+                            byte[] finalBuffer = null;
+                            int finalRead = 0;
+
+                            if (mixMic && micAudioRecord != null) {
+                                int micRead = micAudioRecord.read(micBuffer, 0, micBuffer.length);
+                                if (micRead > 0) {
+                                    finalBuffer = micBuffer;
+                                    finalRead = micRead;
+                                    
+                                    int intRead = internalAudioRecord.read(buffer, 0, micRead, android.media.AudioRecord.READ_NON_BLOCKING);
+                                    if (intRead > 0) {
+                                        int mixLen = Math.min(micRead, intRead);
+                                        mixPcm(buffer, micBuffer, mixedBuffer, mixLen);
+                                        finalBuffer = mixedBuffer;
+                                        finalRead = mixLen;
+                                    }
+                                }
+                            } else {
+                                int read = internalAudioRecord.read(buffer, 0, buffer.length);
+                                if (read > 0) {
+                                    finalBuffer = buffer;
+                                    finalRead = read;
+                                }
+                            }
+
+                            if (finalRead > 0 && finalBuffer != null) {
+                                dk.bearware.AudioBlock block = new dk.bearware.AudioBlock();
+                                block.nStreamID = 0;
+                                block.nSampleRate = sampleRate;
+                                block.nChannels = 1;
+                                block.lpRawAudio = new byte[finalRead];
+                                System.arraycopy(finalBuffer, 0, block.lpRawAudio, 0, finalRead);
+                                block.nSamples = finalRead / 2;
+                                block.uSampleIndex = sampleIndex;
+                                block.uStreamTypes = dk.bearware.StreamType.STREAMTYPE_VOICE;
+
+                                ttclient.insertAudioBlock(block);
+                                sampleIndex += block.nSamples;
+                            } else {
+                                try {
+                                    Thread.sleep(10);
+                                } catch (InterruptedException e) {
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (SecurityException | IllegalArgumentException e) {
+                        Log.e("bearware", "Error recording internal audio", e);
+                    } finally {
+                        stopInternalAudioCapture();
+                    }
+                } else {
+                    Log.e("bearware", "Internal audio capture requires Android 10+");
+                    isInternalAudioRunning = false;
+                }
+            }
+        }, "InternalAudioCaptureThread");
+        internalAudioThread.start();
+    }
+
+    private void stopInternalAudioCapture() {
+        isInternalAudioRunning = false;
+        if (internalAudioRecord != null) {
+            try {
+                if (internalAudioRecord.getRecordingState() == android.media.AudioRecord.RECORDSTATE_RECORDING) {
+                    internalAudioRecord.stop();
+                }
+            } catch (Exception e) {}
+            internalAudioRecord.release();
+            internalAudioRecord = null;
+        }
+        if (micAudioRecord != null) {
+            try {
+                if (micAudioRecord.getRecordingState() == android.media.AudioRecord.RECORDSTATE_RECORDING) {
+                    micAudioRecord.stop();
+                }
+            } catch (Exception e) {}
+            micAudioRecord.release();
+            micAudioRecord = null;
+        }
+        // We DO NOT stop mediaProjection here because the Intent can only be used once.
+        // Stopping it would break subsequent internal audio capture sessions until the app is restarted
+        // or a new permission prompt is requested.
+        // if (mediaProjection != null) {
+        //     try {
+        //         mediaProjection.stop();
+        //     } catch (Exception e) {}
+        //     mediaProjection = null;
+        // }
+        if (internalAudioThread != null) {
+            internalAudioThread.interrupt();
+            internalAudioThread = null;
+        }
+    }
+
+    // Media streaming state
+    private String currentStreamPath = "";
+    private boolean isStreamingMedia = false;
+    private int localPlaybackId = 0;
+    private dk.bearware.MediaFileInfo currentMediaFileInfo = null;
+    private dk.bearware.MediaFilePlayback currentPlayback = null;
+
+    public String getCurrentStreamPath() { return currentStreamPath; }
+    public boolean isStreamingMedia() { return isStreamingMedia; }
+    public int getLocalPlaybackId() { return localPlaybackId; }
+    public dk.bearware.MediaFileInfo getCurrentMediaFileInfo() { return currentMediaFileInfo; }
+    public dk.bearware.MediaFilePlayback getCurrentPlayback() { return currentPlayback; }
+
+    public void setCurrentStreamPath(String path) { this.currentStreamPath = path; }
+    public void setStreamingMedia(boolean streaming) { this.isStreamingMedia = streaming; }
+    public void setLocalPlaybackId(int id) { this.localPlaybackId = id; }
+    public void setCurrentMediaFileInfo(dk.bearware.MediaFileInfo info) { this.currentMediaFileInfo = info; }
+    public void setCurrentPlayback(dk.bearware.MediaFilePlayback playback) { this.currentPlayback = playback; }
+
     public void enableVoiceActivation(boolean enable) {
+        String inputSource = PreferenceManager.getDefaultSharedPreferences(getApplicationContext()).getString("audio_input_source", "mic");
+        boolean useInternal = "internal".equals(inputSource) || "mixed".equals(inputSource);
         if (enable) {
             txSuspended = false;
             voxSuspended = false;
-            int indevid = getPreferredSoundInputDeviceId();
-            if (((ttclient.getFlags() & ClientFlag.CLIENT_SNDINPUT_READY) != 0) || ttclient.initSoundInputDevice(indevid))
+            if (useInternal) {
                 ttclient.enableVoiceActivation(true);
+                startInternalAudioCapture();
+            } else {
+                int indevid = getPreferredSoundInputDeviceId();
+                if (((ttclient.getFlags() & ClientFlag.CLIENT_SNDINPUT_READY) != 0) || ttclient.initSoundInputDevice(indevid))
+                    ttclient.enableVoiceActivation(true);
+            }
         }
         else {
+            if (useInternal) {
+                stopInternalAudioCapture();
+            }
             ttclient.enableVoiceActivation(false);
             ttclient.closeSoundInputDevice();
         }
         adjustMuteOnTx(enable);
+        updateFloatingWindow();
     }
 
     public void syncToUserCache(User user) {
@@ -901,6 +1296,7 @@ public class TeamTalkService extends Service
         else {
             login();
         }
+        updateFloatingWindow();
     }
 
     @Override
@@ -919,6 +1315,7 @@ public class TeamTalkService extends Service
                        Toast.LENGTH_SHORT).show();
         
         createReconnectTimer(5000);
+        updateFloatingWindow();
     }
 
     @Override
@@ -936,6 +1333,7 @@ public class TeamTalkService extends Service
         MyTextMessage msg = MyTextMessage.createLogMsg(MyTextMessage.MSGTYPE_LOG_ERROR,
             getResources().getString(R.string.text_con_lost));
         getChatLogTextMsgs().add(msg);
+        updateFloatingWindow();
     }
 
     @Override
@@ -1007,6 +1405,7 @@ public class TeamTalkService extends Service
             statusmode |= TeamTalkConstants.STATUSMODE_FEMALE;
 
         ttclient.doChangeStatus(statusmode, statusmsg);
+        updateFloatingWindow();
     }
 
     @Override
@@ -1070,6 +1469,7 @@ public class TeamTalkService extends Service
     @Override
     public void onCmdUserUpdate(User user) {
         users.put(user.nUserID, user);
+        updateFloatingWindow();
     }
 
     @Override
@@ -1295,12 +1695,14 @@ public class TeamTalkService extends Service
     @Override
     public void onUserStateChange(User user) {
         users.put(user.nUserID, user);
+        updateFloatingWindow();
     }
 
 
     @Override
     public void onVoiceActivation(boolean bVoiceActive) {
         adjustMuteOnTx(bVoiceActive);
+        updateFloatingWindow();
     }
 
     @Override

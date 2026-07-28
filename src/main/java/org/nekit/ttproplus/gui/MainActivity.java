@@ -46,6 +46,7 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.ParcelFileDescriptor;
 import android.os.CountDownTimer;
 import android.os.PowerManager;
@@ -70,18 +71,21 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView.OnItemLongClickListener;
+import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ExpandableListView;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.PopupMenu.OnMenuItemClickListener;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ProgressBar;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
@@ -101,6 +105,11 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Serializable;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -202,6 +211,25 @@ extends AppCompatActivity
     TextMessageAdapter textmsgAdapter;
     MediaAdapter mediaAdapter;
     TTSWrapper ttsWrapper = null;
+
+    private final Handler micActivityHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable micActivityRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (prefs != null && prefs.get(Preferences.PREF_DISPLAY_SHOW_MIC_ACTIVITY, false) && mConnection.isBound() && getClient() != null) {
+                ProgressBar micBar = findViewById(R.id.mic_activity_bar);
+                if (micBar != null) {
+                    micBar.setVisibility(View.VISIBLE);
+                    int level = getClient().getSoundInputLevel();
+                    micBar.setProgress(level);
+                }
+            } else {
+                ProgressBar micBar = findViewById(R.id.mic_activity_bar);
+                if (micBar != null) micBar.setVisibility(View.GONE);
+            }
+            micActivityHandler.postDelayed(this, 100);
+        }
+    };
     AccessibilityAssistant accessibilityAssistant;
     AudioManager audioManager;
     SoundPool audioIcons;
@@ -343,7 +371,10 @@ extends AppCompatActivity
         menu.findItem(R.id.action_user_accounts).setEnabled(hasUserAccounts).setVisible(hasUserAccounts && isLeaveable);
         menu.findItem(R.id.action_server_properties).setEnabled(canEditServer).setVisible(canEditServer && isLeaveable);
         menu.findItem(R.id.action_banned_users).setEnabled(canBan).setVisible(canBan && isLeaveable);
-        menu.findItem(R.id.action_server_stats).setEnabled(isLeaveable).setVisible(isLeaveable);
+        menu.findItem(R.id.action_server_stats).setEnabled(hasUserAccounts && isLeaveable).setVisible(hasUserAccounts && isLeaveable);
+        boolean isRecording = getService() != null && getService().isRecording();
+        menu.findItem(R.id.action_start_recording).setEnabled(isLeaveable && !isRecording).setVisible(isLeaveable && !isRecording);
+        menu.findItem(R.id.action_stop_recording).setEnabled(isLeaveable && isRecording).setVisible(isLeaveable && isRecording);
         return super.onPrepareOptionsMenu(menu);
     }
 
@@ -406,6 +437,15 @@ extends AppCompatActivity
         } else if (itemId == R.id.action_settings) {
             Intent intent = new Intent(MainActivity.this, PreferencesActivity.class);
             startActivity(intent);
+        } else if (itemId == R.id.action_start_recording) {
+            if (getService() != null) getService().startRecording();
+        } else if (itemId == R.id.action_stop_recording) {
+            if (getService() != null) {
+                File recordedFile = getService().stopRecording();
+                if (recordedFile != null && getService().shouldShowRecordingDialog()) {
+                    showRecordingCompleteDialog(recordedFile);
+                }
+            }
         } else if (itemId == R.id.action_online_users) {
             Intent intent = new Intent(MainActivity.this, OnlineUsersActivity.class);
             startActivity(intent);
@@ -446,6 +486,10 @@ extends AppCompatActivity
         if (ttsWrapper == null)
             ttsWrapper = new TTSWrapper(this, prefs.get("pref_speech_engine", TTSWrapper.defaultEngineName));
 
+        // Close floating window if setting is enabled
+        if (mConnection.isBound() && getService().getFloatingWindowManager() != null) {
+            getService().getFloatingWindowManager().hideIfAppOpened();
+        }
         if (!mConnection.isBound()) {
             // Bind to LocalService
             Intent intent = new Intent(ctx, TeamTalkService.class);
@@ -496,6 +540,7 @@ extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
+        micActivityHandler.post(micActivityRunnable);
         boolean proximitySensor = prefs.get("proximity_sensor_checkbox", false);
         if (proximitySensor) {
             mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_NORMAL);
@@ -598,6 +643,7 @@ extends AppCompatActivity
     @Override
     protected void onPause() {
         super.onPause();
+        micActivityHandler.removeCallbacks(micActivityRunnable);
         if (stats_timer != null) {
             stats_timer.cancel();
             stats_timer = null;
@@ -1291,6 +1337,13 @@ private EditText newmsg;
                         if (convertView == null ||
                                 convertView.findViewById(R.id.parentname) == null)
                             convertView = inflater.inflate(R.layout.item_channel_back, parent, false);
+                        
+                        TextView pName = convertView.findViewById(R.id.parentname);
+                        TextView pTopic = convertView.findViewById(R.id.chantopic);
+                        String parentNameStr = (channel.nParentID == 0) ? getString(R.string.root_channel) : channel.szName;
+                        pName.setText(getString(R.string.back_to_channel, parentNameStr));
+                        pTopic.setText(channel.szTopic);
+                        convertView.setContentDescription(getString(R.string.back_to_channel, parentNameStr) + (channel.szTopic.isEmpty() ? "" : ", " + channel.szTopic));
                         break;
 
                     case CHANNEL_VIEW_TYPE :
@@ -1314,14 +1367,17 @@ private EditText newmsg;
                         }
                         chanicon.setImageResource(icon_resource);
 
+                        String finalChanName = "";
                         if(channel.nParentID == 0) {
                             // show server name as channel name for root channel
                             ServerProperties srvprop = new ServerProperties();
                             getClient().getServerProperties(srvprop);
                             name.setText(srvprop.szServerName);
+                            finalChanName = srvprop.szServerName;
                         }
                         else {
                             name.setText(channel.szName);
+                            finalChanName = channel.szName;
                         }
                         topic.setText(channel.szTopic);
 
@@ -1334,10 +1390,23 @@ private EditText newmsg;
                         join.setAccessibilityDelegate(accessibilityAssistant);
                         join.setEnabled(channel.nChannelID != getClient().getMyChannelID());
 
+                        int population = 0;
                         if (channel.nMaxUsers > 0) {
-                            int population = Utils.getUsers(channel.nChannelID, getService().getUsers()).size();
+                            population = Utils.getUsers(channel.nChannelID, getService().getUsers()).size();
                             ((TextView)convertView.findViewById(R.id.population)).setText((population > 0) ? String.format(Locale.ROOT, "(%d)", population) : "");
                         }
+
+                        StringBuilder descBuilder = new StringBuilder(finalChanName);
+                        if (channel.bPassword) {
+                            descBuilder.append(", ").append(getString(R.string.text_passwdprot));
+                        }
+                        if (population > 0) {
+                            descBuilder.append(", ").append(getString(R.string.desc_users_count, population));
+                        }
+                        if (channel.szTopic != null && !channel.szTopic.isEmpty()) {
+                            descBuilder.append(", ").append(getString(R.string.channel_prop_title_topic)).append(": ").append(channel.szTopic);
+                        }
+                        convertView.setContentDescription(descBuilder.toString());
 
                         break;
 
@@ -1458,6 +1527,49 @@ private EditText newmsg;
                     
                     connection.setText(getString(R.string.label_connection) + " " + con);
                     connection.setTextColor(con_color);
+
+                    if ((flags & ClientFlag.CLIENT_AUTHORIZED) != ClientFlag.CLIENT_AUTHORIZED) {
+                        if (prefs != null && prefs.get(Preferences.PREF_DISPLAY_SHOW_PING_NO_SERVER, false)) {
+                            ServerEntry entry = getService() != null ? getService().getServerEntry() : null;
+                            if (entry != null && entry.ipaddr != null) {
+                                final String ip = entry.ipaddr;
+                                new Thread(() -> {
+                                    try {
+                                        Process p = Runtime.getRuntime().exec("ping -c 1 -w 1 " + ip);
+                                        int status = p.waitFor();
+                                        if (status == 0) {
+                                            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                                            String line;
+                                            String timeStr = "";
+                                            while ((line = reader.readLine()) != null) {
+                                                if (line.contains("time=")) {
+                                                    timeStr = line.substring(line.indexOf("time=") + 5);
+                                                    if (timeStr.contains(" ")) timeStr = timeStr.substring(0, timeStr.indexOf(" "));
+                                                    break;
+                                                }
+                                            }
+                                            final String finalTime = timeStr;
+                                            runOnUiThread(() -> {
+                                                if (!finalTime.isEmpty()) {
+                                                    ping.setText(getString(R.string.label_ping) + " " + finalTime + "ms");
+                                                    ping.setTextColor(defcolor);
+                                                }
+                                            });
+                                        } else {
+                                            runOnUiThread(() -> {
+                                                ping.setText(getString(R.string.label_ping) + " timeout");
+                                                ping.setTextColor(Color.RED);
+                                            });
+                                        }
+                                    } catch (Exception e) {}
+                                }).start();
+                            }
+                        } else {
+                            ping.setText("");
+                        }
+                        accessibilityAssistant.unlockEvents();
+                        return;
+                    }
 
                     ClientStatistics stats = new ClientStatistics();
                     if(!getClient().getClientStatistics(stats)) {
@@ -2402,6 +2514,120 @@ private EditText newmsg;
                 audioIcons.play(sounds.get(SOUND_VOXDISABLE), 1.0f, 1.0f, 0, 0, 1.0f);
             }
         }
+    }
+
+    private void showRecordingCompleteDialog(File recordedFile) {
+        android.content.SharedPreferences prefs = android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+
+        String fileName = recordedFile.getName();
+        String nameWithoutExt = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(R.string.recording_rename_title);
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(32, 16, 32, 16);
+
+        final EditText nameInput = new EditText(this);
+        nameInput.setHint(R.string.recording_rename_hint);
+        nameInput.setText(nameWithoutExt);
+        nameInput.setSelectAllOnFocus(true);
+        layout.addView(nameInput);
+
+        TextView formatLabel = new TextView(this);
+        formatLabel.setText(R.string.pref_recording_format_title);
+        formatLabel.setPadding(0, 16, 0, 4);
+        layout.addView(formatLabel);
+
+        final android.widget.Spinner formatSpinner = new android.widget.Spinner(this);
+        ArrayAdapter<CharSequence> formatAdapter = ArrayAdapter.createFromResource(this,
+                R.array.recording_format_entries, android.R.layout.simple_spinner_item);
+        formatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        formatSpinner.setAdapter(formatAdapter);
+
+        String currentFormat = prefs.getString(org.nekit.ttproplus.data.Preferences.PREF_RECORDING_FORMAT, "wav");
+        String[] formatValues = getResources().getStringArray(R.array.recording_format_values);
+        for (int i = 0; i < formatValues.length; i++) {
+            if (formatValues[i].equals(currentFormat)) {
+                formatSpinner.setSelection(i);
+                break;
+            }
+        }
+        layout.addView(formatSpinner);
+
+        TextView bitrateLabel = new TextView(this);
+        bitrateLabel.setText(R.string.pref_recording_mp3_bitrate_title);
+        bitrateLabel.setPadding(0, 16, 0, 4);
+        layout.addView(bitrateLabel);
+
+        final android.widget.Spinner bitrateSpinner = new android.widget.Spinner(this);
+        ArrayAdapter<CharSequence> bitrateAdapter = ArrayAdapter.createFromResource(this,
+                R.array.recording_mp3_bitrate_entries, android.R.layout.simple_spinner_item);
+        bitrateAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        bitrateSpinner.setAdapter(bitrateAdapter);
+
+        String currentBitrate = prefs.getString(org.nekit.ttproplus.data.Preferences.PREF_RECORDING_MP3_BITRATE, "128");
+        String[] bitrateValues = getResources().getStringArray(R.array.recording_mp3_bitrate_values);
+        for (int i = 0; i < bitrateValues.length; i++) {
+            if (bitrateValues[i].equals(currentBitrate)) {
+                bitrateSpinner.setSelection(i);
+                break;
+            }
+        }
+        layout.addView(bitrateSpinner);
+
+        boolean isMp3 = "mp3".equals(currentFormat);
+        bitrateLabel.setVisibility(isMp3 ? View.VISIBLE : View.GONE);
+        bitrateSpinner.setVisibility(isMp3 ? View.VISIBLE : View.GONE);
+
+        formatSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                boolean mp3Selected = formatValues[position].equals("mp3");
+                bitrateLabel.setVisibility(mp3Selected ? View.VISIBLE : View.GONE);
+                bitrateSpinner.setVisibility(mp3Selected ? View.VISIBLE : View.GONE);
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+        });
+
+        builder.setView(layout);
+
+        builder.setPositiveButton(R.string.recording_rename_save, (dialog, which) -> {
+            String newName = nameInput.getText().toString().trim();
+            if (newName.isEmpty()) {
+                newName = nameWithoutExt;
+            }
+
+            String selectedFormat = formatValues[formatSpinner.getSelectedItemPosition()];
+            String selectedBitrate = bitrateValues[bitrateSpinner.getSelectedItemPosition()];
+
+            String extension;
+            switch (selectedFormat) {
+                case "mp3": extension = ".mp3"; break;
+                case "codec": extension = ".ogg"; break;
+                default: extension = ".wav"; break;
+            }
+
+            File newFile = new File(recordedFile.getParent(), newName + extension);
+            boolean renamed = recordedFile.renameTo(newFile);
+            if (renamed) {
+                prefs.edit()
+                    .putString(org.nekit.ttproplus.data.Preferences.PREF_RECORDING_FORMAT, selectedFormat)
+                    .putString(org.nekit.ttproplus.data.Preferences.PREF_RECORDING_MP3_BITRATE, selectedBitrate)
+                    .apply();
+                Toast.makeText(this, getString(R.string.recording_renamed_success, newFile.getName()), Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, R.string.recording_rename_failed, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        builder.setNegativeButton(R.string.recording_rename_skip, (dialog, which) -> {
+        });
+
+        builder.show();
     }
 
     @Override

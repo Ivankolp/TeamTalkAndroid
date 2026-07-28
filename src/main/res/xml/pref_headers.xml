@@ -6,6 +6,12 @@
         android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$GeneralPreferenceFragment"
         android:title="@string/pref_header_general" />
     <header
+        android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$BackgroundMgmtPreferenceFragment"
+        android:title="@string/pref_header_background_mgmt" />
+    <header
+        android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$DisplayPreferenceFragment"
+        android:title="@string/pref_header_display" />
+    <header
         android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$SoundPacksPreferenceFragment"
         android:title="@string/pref_title_sound_pack" />
     <header
@@ -26,6 +32,9 @@
     <header
         android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$SoundSystemPreferenceFragment"
         android:title="@string/pref_header_soundsystem" />
+    <header
+        android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$RecordingPreferenceFragment"
+        android:title="@string/pref_header_recording" />
     <header
         android:fragment="org.nekit.ttproplus.gui.PreferencesActivity$AboutPreferenceFragment"
         android:title="@string/pref_cat_about" />

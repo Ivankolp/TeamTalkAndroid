@@ -33,6 +33,7 @@ import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.Settings;
 import android.os.Bundle;
 import android.preference.CheckBoxPreference;
 import android.preference.ListPreference;
@@ -88,6 +89,8 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
     TeamTalkConnection mConnection;
 
     static final int ACTIVITY_REQUEST_BEARWAREID = 2;
+    public static final int REQUEST_MEDIA_PROJECTION = 2001;
+    private static String pendingInputSource = null;
 
     private AppCompatDelegate appCompatDelegate = null;
 
@@ -239,6 +242,7 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
     protected boolean isValidFragment(String fragmentName) {
     	// getCanonicalName() returns a string with '$' separator instead of '.'
         return GeneralPreferenceFragment.class.getName().equals(fragmentName) ||
+            BackgroundMgmtPreferenceFragment.class.getName().equals(fragmentName) ||
             SoundEventsPreferenceFragment.class.getName().equals(fragmentName) ||
             ConnectionPreferenceFragment.class.getName().equals(fragmentName) ||
             ServerListPreferenceFragment.class.getName().equals(fragmentName) ||
@@ -246,7 +250,9 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
             SoundSystemPreferenceFragment.class.getName().equals(fragmentName) ||
             AntiSpamPreferenceFragment.class.getName().equals(fragmentName) ||
             AboutPreferenceFragment.class.getName().equals(fragmentName) ||
-            SoundPacksPreferenceFragment.class.getName().equals(fragmentName);
+            SoundPacksPreferenceFragment.class.getName().equals(fragmentName) ||
+            RecordingPreferenceFragment.class.getName().equals(fragmentName) ||
+            DisplayPreferenceFragment.class.getName().equals(fragmentName);
     }
 
     @Override
@@ -263,6 +269,21 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
 
         if (requestCode == ACTIVITY_REQUEST_BEARWAREID && resultCode == RESULT_OK) {
             // BearWare login preference handled by onResume()
+        }
+        else if (requestCode == REQUEST_MEDIA_PROJECTION) {
+            if (resultCode == RESULT_OK && data != null) {
+                TeamTalkService service = getService();
+                if (service != null) {
+                    service.setMediaProjectionData(resultCode, data);
+                }
+                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+                String source = pendingInputSource != null ? pendingInputSource : "internal";
+                prefs.edit().putString(Preferences.PREF_SOUNDSYSTEM_INPUT_SOURCE, source).apply();
+                pendingInputSource = null;
+                recreate();
+            } else {
+                Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
@@ -535,6 +556,25 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
             addPreferencesFromResource(R.xml.pref_soundsystem);
+
+            ListPreference inputSourcePref = (ListPreference) findPreference(Preferences.PREF_SOUNDSYSTEM_INPUT_SOURCE);
+            if (inputSourcePref != null) {
+                inputSourcePref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    String value = (String) newValue;
+                    if ("internal".equals(value) || "mixed".equals(value)) {
+                        if (!TeamTalkService.hasMediaProjectionData()) {
+                            pendingInputSource = value;
+                            android.media.projection.MediaProjectionManager mediaProjectionManager = 
+                                (android.media.projection.MediaProjectionManager) getActivity().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                            if (mediaProjectionManager != null) {
+                                getActivity().startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
+                            }
+                            return false; // wait for permission result
+                        }
+                    }
+                    return true;
+                });
+            }
         }
     }
 
@@ -554,6 +594,112 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
         }
     }
 
+    public static class RecordingPreferenceFragment extends PreferenceFragment {
+        private static final int REQUEST_FOLDER_PICKER = 3001;
+        private static final int REQUEST_FOLDER_SAF = 3002;
+
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            addPreferencesFromResource(R.xml.pref_recording);
+
+            final ListPreference formatPref = (ListPreference) findPreference(Preferences.PREF_RECORDING_FORMAT);
+            final Preference bitratePref = findPreference(Preferences.PREF_RECORDING_MP3_BITRATE);
+
+            if (formatPref != null && bitratePref != null) {
+                bitratePref.setEnabled("mp3".equals(formatPref.getValue()));
+                formatPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    bitratePref.setEnabled("mp3".equals(newValue));
+                    return true;
+                });
+            }
+
+            Preference pathPref = findPreference(Preferences.PREF_RECORDING_PATH);
+            if (pathPref != null) {
+                updatePathSummary(pathPref);
+                pathPref.setOnPreferenceClickListener(preference -> {
+                    showFolderPickerDialog();
+                    return true;
+                });
+            }
+        }
+
+        private void updatePathSummary(Preference pathPref) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
+            String path = prefs.getString(Preferences.PREF_RECORDING_PATH, "");
+            if (path.isEmpty()) {
+                pathPref.setSummary(R.string.pref_recording_path_summary);
+            } else {
+                pathPref.setSummary(getString(R.string.recording_current_path, path));
+            }
+        }
+
+        private void showFolderPickerDialog() {
+            android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getActivity());
+            builder.setTitle(R.string.choose_folder_method_title);
+            String[] options = {
+                getString(R.string.choose_folder_method_custom),
+                getString(R.string.choose_folder_method_system)
+            };
+            builder.setItems(options, (dialog, which) -> {
+                if (which == 0) {
+                    Intent intent = new Intent(getActivity(), CustomFilePickerActivity.class);
+                    intent.putExtra(CustomFilePickerActivity.EXTRA_FOLDER_MODE, true);
+                    startActivityForResult(intent, REQUEST_FOLDER_PICKER);
+                } else {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    startActivityForResult(intent, REQUEST_FOLDER_SAF);
+                }
+            });
+            builder.show();
+        }
+
+        @Override
+        public void onActivityResult(int requestCode, int resultCode, Intent data) {
+            super.onActivityResult(requestCode, resultCode, data);
+            if (resultCode != android.app.Activity.RESULT_OK || data == null) return;
+
+            String folderPath = null;
+            if (requestCode == REQUEST_FOLDER_PICKER) {
+                folderPath = data.getStringExtra(CustomFilePickerActivity.EXTRA_FILE_PATH);
+            } else if (requestCode == REQUEST_FOLDER_SAF) {
+                android.net.Uri treeUri = data.getData();
+                if (treeUri != null) {
+                    folderPath = resolveTreeUriToPath(treeUri);
+                    if (folderPath == null) {
+                        folderPath = treeUri.toString();
+                    }
+                }
+            }
+
+            if (folderPath != null) {
+                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
+                prefs.edit().putString(Preferences.PREF_RECORDING_PATH, folderPath).apply();
+                Preference pathPref = findPreference(Preferences.PREF_RECORDING_PATH);
+                if (pathPref != null) {
+                    updatePathSummary(pathPref);
+                }
+            }
+        }
+
+        private String resolveTreeUriToPath(android.net.Uri treeUri) {
+            try {
+                String docId = android.provider.DocumentsContract.getTreeDocumentId(treeUri);
+                if (docId != null && docId.contains(":")) {
+                    String[] parts = docId.split(":");
+                    String type = parts[0];
+                    String relativePath = parts.length > 1 ? parts[1] : "";
+                    if ("primary".equalsIgnoreCase(type)) {
+                        return android.os.Environment.getExternalStorageDirectory().getAbsolutePath() + "/" + relativePath;
+                    }
+                }
+            } catch (Exception e) {
+                // ignore
+            }
+            return null;
+        }
+    }
+
     @Override
     public void onServiceConnected(TeamTalkService service) {
     }
@@ -562,6 +708,54 @@ public class PreferencesActivity extends PreferenceActivity implements TeamTalkC
     public void onServiceDisconnected(TeamTalkService service) {
     }
 
+
+    public static class BackgroundMgmtPreferenceFragment extends PreferenceFragment {
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            addPreferencesFromResource(R.xml.pref_background_mgmt);
+
+            CheckBoxPreference bgMgmtPref = (CheckBoxPreference) findPreference(Preferences.PREF_BG_MGMT_ENABLED);
+            if (bgMgmtPref != null) {
+                bgMgmtPref.setOnPreferenceChangeListener((preference, newValue) -> {
+                    boolean enabled = (Boolean) newValue;
+                    if (enabled) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(getActivity())) {
+                            Toast.makeText(getActivity(), R.string.bg_mgmt_permission_required, Toast.LENGTH_LONG).show();
+                            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:" + getActivity().getPackageName()));
+                            startActivity(intent);
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
+        }
+
+        @Override
+        public void onResume() {
+            super.onResume();
+            CheckBoxPreference bgMgmtPref = (CheckBoxPreference) findPreference(Preferences.PREF_BG_MGMT_ENABLED);
+            if (bgMgmtPref != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (!Settings.canDrawOverlays(getActivity())) {
+                        bgMgmtPref.setChecked(false);
+                    }
+                }
+            }
+        }
+    }
+
+    public static class DisplayPreferenceFragment extends PreferenceFragment {
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            addPreferencesFromResource(R.xml.pref_display);
+
+
+        }
+    }
 
     private AppCompatDelegate getDelegate() {
         if (appCompatDelegate == null) {

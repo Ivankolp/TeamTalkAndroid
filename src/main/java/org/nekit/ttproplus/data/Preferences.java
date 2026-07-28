@@ -45,7 +45,8 @@ public class Preferences {
             PREF_SOUNDSYSTEM_MUTE_ON_TRANSMISSION = "mute_speakers_on_tx_checkbox",
             PREF_SOUNDSYSTEM_SPEAKERPHONE = "speakerphone_checkbox",
             PREF_SOUNDSYSTEM_BLUETOOTH_HEADSET = "bluetooth_headset_checkbox",
-            PREF_SOUNDSYSTEM_VOICEPROCESSING = "voiceprocessing_checkbox";
+            PREF_SOUNDSYSTEM_VOICEPROCESSING = "voiceprocessing_checkbox",
+            PREF_SOUNDSYSTEM_INPUT_SOURCE = "audio_input_source";
     public static final String
             PREF_JOIN_ROOT_CHAN = "auto_join_root_checkbox",
             PREF_SUB_TEXTMESSAGE = "sub_txtmsg_checkbox",
@@ -60,4 +61,28 @@ public class Preferences {
             PREF_ANTISPAM_ENABLED = "antispam_enabled",
             PREF_ANTISPAM_MSG_LIMIT = "antispam_msg_limit",
             PREF_ANTISPAM_UNSUB_ALL = "antispam_unsub_all";
+
+    public static final String
+            PREF_BG_MGMT_ENABLED = "bg_mgmt_enabled",
+            PREF_BG_MGMT_SHOW_VOICE = "bg_mgmt_show_voice",
+            PREF_BG_MGMT_SHOW_MUTE = "bg_mgmt_show_mute",
+            PREF_BG_MGMT_SHOW_PING = "bg_mgmt_show_ping",
+            PREF_BG_MGMT_SHOW_CHAT = "bg_mgmt_show_chat";
+
+    public static final String
+            PREF_RECORDING_FORMAT = "recording_format",
+            PREF_RECORDING_MP3_BITRATE = "recording_mp3_bitrate",
+            PREF_RECORDING_PATH = "recording_path",
+            PREF_RECORDING_SHOW_DIALOG = "recording_show_dialog_after",
+            PREF_RECORDING_AUTO = "auto_record_conversations";
+
+    public static final String
+            PREF_BG_MGMT_SHOW_CHANNELS = "bg_mgmt_show_channels",
+            PREF_BG_MGMT_CLOSE_ON_APP_OPEN = "bg_mgmt_close_on_app_open";
+
+    public static final String
+            PREF_DISPLAY_SHOW_MIC_ACTIVITY = "display_show_mic_activity",
+            PREF_DISPLAY_SHOW_PING_NO_SERVER = "display_show_ping_no_server";
+
+    public static final String PREF_WELCOME_SHOWN = "welcome_shown";
 }

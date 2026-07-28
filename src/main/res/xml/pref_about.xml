@@ -3,43 +3,37 @@
     <PreferenceCategory
         android:key="about_def"
         android:title="@string/pref_cat_about">
+        
+        <Preference
+            android:enabled="false"
+            android:title="@string/pref_fork_desc_title"
+            android:summary="@string/pref_fork_desc_summary" />
+
+        <Preference
+            android:title="@string/pref_source_code_title"
+            android:summary="https://github.com/nekit-wq/Teamtalk-pro-android-code">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="https://github.com/nekit-wq/Teamtalk-pro-android-code" />
+        </Preference>
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/pref_title_contrib">
-
-        <EditTextPreference
+        <Preference
             android:enabled="false"
-            android:singleLine="true"
-            android:title="Beqa Gozalishvili" />
-        <EditTextPreference
-            android:enabled="false"
-            android:singleLine="true"
-            android:title="Bjørn Damstedt Rasmussen" />
-        <EditTextPreference
-            android:enabled="false"
-            android:singleLine="true"
-            android:title="Amir Mahdi Fard" />
-        <EditTextPreference
-            android:enabled="false"
-            android:singleLine="true"
-            android:title="Corentin Bacqué-Cazenave" />
-        <EditTextPreference
-            android:enabled="false"
-            android:singleLine="true"
-            android:title="Igor B. Poretsky" />
+            android:title="NEKIT" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/pref_title_translator">
-        <EditTextPreference
+        <Preference
             android:enabled="false"
-            android:singleLine="true"
             android:title="@string/text_translator" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/pref_title_libraries">
-        <EditTextPreference
+        <Preference
             android:enabled="false"
-            android:title="ACE, FFmpeg, Ogg, OpenSSL, Opus, Opus-tools, Speex, SpeexDSP, WebM, Zlib" />
+            android:summary="ACE, FFmpeg, Ogg, OpenSSL, Opus, Opus-tools, Speex, SpeexDSP, WebM, Zlib" />
     </PreferenceCategory>
 
 </PreferenceScreen>

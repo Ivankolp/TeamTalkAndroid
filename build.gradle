@@ -16,15 +16,29 @@ android {
         minSdk = 21
         targetSdk = 36
         versionCode = 150
-        versionName = '5.22'
+        versionName = '5.23'
 
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    signingConfigs {
+        release {
+            storeFile = file('release.keystore')
+            storePassword = 'android'
+            keyAlias = 'release'
+            keyPassword = 'android'
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = true
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = signingConfigs.release
         }
     }
 
@@ -54,6 +68,7 @@ android {
 
     lint {
         disable 'MissingTranslation'
+        disable 'ExtraTranslation'
     }
 }
 

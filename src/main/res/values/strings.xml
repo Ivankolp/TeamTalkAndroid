@@ -40,6 +40,20 @@
     <string name="pref_cat_tts_transmission">Transmit Control Text-To-Speech messages</string>
     <string name="pref_cat_tts_subscription">Subscription Text-To-Speech messages</string>
     <string name="pref_header_general">General</string>
+    <string name="pref_header_background_mgmt">Background Management</string>
+    <string name="pref_title_bg_mgmt_enabled">Enable background management</string>
+    <string name="pref_summary_bg_mgmt_enabled">Show floating control window in the background</string>
+    <string name="pref_category_bg_mgmt_elements">Visible elements</string>
+    <string name="pref_title_bg_mgmt_show_voice">Voice control button</string>
+    <string name="pref_title_bg_mgmt_show_mute">Mute sound button</string>
+    <string name="pref_title_bg_mgmt_show_ping">Ping and connection state</string>
+    <string name="pref_title_bg_mgmt_show_chat">Chat button</string>
+    <string name="bg_mgmt_permission_required">Overlay permission is required for background management</string>
+    <string name="chat_dialog_title">Select Chat</string>
+    <string name="chat_option_global">Global Chat</string>
+    <string name="chat_option_private">Private Chat</string>
+    <string name="chat_select_user">Select User</string>
+    <string name="chat_no_online_users">No users online</string>
     <string name="pref_title_nickname">Nickname</string>
     <string name="pref_title_statusmsg">Status message</string>
     <string name="pref_default_nickname">NoName</string>
@@ -649,4 +663,120 @@
     <string name="pref_summary_clientname">Custom client name displayed for your user</string>
     <string name="msg_reconnect_for_clientname">Reconnect to apply the new client name</string>
 
+    <string name="pref_title_audio_input_source">Audio Input Source</string>
+    <string name="pref_summary_audio_input_source">Choose between microphone and internal audio streaming</string>
+    <string name="chat_option_broadcast">Broadcast Message</string>
+    <string name="custom_picker_title">Custom File Picker</string>
+    <string name="btn_search_tt_files">Search .tt</string>
+    <string name="btn_search_tt_files_desc">Search all folders for .tt files</string>
+    <string name="import_method_title">Choose File Selector</string>
+    <string name="import_method_system">System File Manager</string>
+    <string name="import_method_custom">Custom File Manager</string>
+    <string name="tt_file_action_title">File Selected</string>
+    <string name="tt_file_action_message">Would you like to import this server into your list, or just connect to it directly?</string>
+    <string name="tt_file_action_import">Import</string>
+    <string name="tt_file_action_connect_only">Connect without import</string>
+    <string name="servers_imported_successfully">Servers imported successfully</string>
+    <string name="searching_tt_files">Searching for .tt files, please wait...</string>
+    <string name="no_tt_files_found">No .tt files found on device</string>
+    <string name="select_tt_file_dialog_title">Select found .tt file</string>
+    <string name="desc_drag_handle">Drag control window</string>
+    <string name="desc_btn_voice">Toggle voice transmission</string>
+    <string name="desc_btn_mute">Toggle sound mute</string>
+    <string name="desc_btn_chat">Choose chat type</string>
+    <string name="desc_voice_transmitting">Microphone is transmitting voice</string>
+    <string name="desc_voice_silent">Microphone is silent</string>
+    <string name="desc_sound_muted">Sound is muted</string>
+    <string name="desc_sound_active">Sound is active</string>
+    <string name="desc_seekbar_playback">Playback progress</string>
+    <string name="desc_users_count">%d users</string>
+    <string name="back_to_channel">Back to: %s</string>
+    <string name="root_channel">Root Channel</string>
+    <string name="pref_fork_desc_title">Fork Description</string>
+    <string name="pref_fork_desc_summary">Fork of TeamTalk pro+ for Android. Features: spam protection (auto-unsubscribing), flexible sound themes for events, administration (accounts, bans, server properties &amp; stats), redesigned media streaming, updated design, and improved dark theme.</string>
+    <string name="pref_source_code_title">Source Code</string>
+    <string name="desc_btn_channels">Choose channel</string>
+    <string name="msg_playlist_playing">Playlist: playing file %1$d of %2$d</string>
+    <string name="msg_streaming_url">Streaming network URL</string>
+    <string name="action_start_recording">Start recording</string>
+    <string name="action_stop_recording">Stop recording</string>
+    <string name="recording_started">Recording started: %s</string>
+    <string name="recording_stopped">Recording stopped</string>
+    <string name="recording_start_failed">Failed to start recording</string>
+    <string name="pref_auto_record_conversations_title">Auto-record conversations</string>
+    <string name="pref_auto_record_conversations_summary">Start audio recording automatically when joining a channel</string>
+
+    <string name="permission_required_files">File access permission is required</string>
+    <string name="hint_filter_results">Filter results…</string>
+    <string name="tt_files_found_count">Found %d .tt file(s)</string>
+    <string name="cd_back">Go back</string>
+    <string name="cd_up_folder">Go up, folder</string>
+    <string name="cd_folder">folder</string>
+    <string name="cd_tt_file">TeamTalk configuration file</string>
+    <string name="cd_file">file</string>
+
+    <string name="pref_header_recording">Recording</string>
+    <string name="pref_recording_format_title">Audio Format</string>
+    <string name="pref_recording_format_summary">Choose recording file format</string>
+    <string name="pref_recording_mp3_bitrate_title">MP3 Bitrate</string>
+    <string name="pref_recording_mp3_bitrate_summary">Select MP3 encoding quality</string>
+    <string name="pref_recording_path_title">Recording Path</string>
+    <string name="pref_recording_path_summary">Choose folder for saving recordings</string>
+    <string name="pref_recording_show_dialog_title">Show dialog after recording</string>
+    <string name="pref_recording_show_dialog_summary">Show a dialog to rename and configure the recording after stopping</string>
+    <string name="recording_rename_title">Recording Complete</string>
+    <string name="recording_rename_hint">Enter recording name</string>
+    <string name="recording_rename_save">Save</string>
+    <string name="recording_rename_skip">Skip</string>
+    <string name="recording_renamed_success">Recording saved: %s</string>
+    <string name="recording_rename_failed">Failed to rename recording</string>
+    <string name="recording_current_path">Current path: %s</string>
+    <string name="choose_folder_method_title">Choose Folder Selector</string>
+    <string name="choose_folder_method_custom">Custom File Manager</string>
+    <string name="choose_folder_method_system">System File Manager</string>
+    <string name="btn_select_this_folder">Select This Folder</string>
+
+    <!-- Floating window: channels button and close on app open -->
+    <string name="pref_title_bg_mgmt_show_channels">Show Channels button</string>
+    <string name="pref_summary_bg_mgmt_show_channels">Show channel selection button in floating window</string>
+    <string name="pref_category_bg_mgmt_behavior">Behavior</string>
+    <string name="pref_title_bg_mgmt_close_on_app_open">Close on app open</string>
+    <string name="pref_summary_bg_mgmt_close_on_app_open">Close floating window when entering the app</string>
+
+    <!-- Display preferences -->
+    <string name="pref_header_display">Display</string>
+    <string name="pref_category_display_colors">Colors</string>
+    <string name="pref_title_display_color_primary">Primary color</string>
+    <string name="pref_title_display_color_accent">Accent color</string>
+    <string name="pref_title_display_color_background">Background color</string>
+    <string name="pref_title_display_color_text">Text color</string>
+    <string name="pref_title_display_color_buttons">Button color</string>
+    <string name="pref_summary_display_color">Enter HEX color code (e.g. #FF4081)</string>
+    <string name="pref_category_display_sizes">Sizes</string>
+    <string name="pref_title_display_button_size">Button size</string>
+    <string name="pref_category_display_indicators">Indicators</string>
+    <string name="pref_title_display_show_mic_activity">Show microphone activity</string>
+    <string name="pref_summary_display_show_mic_activity">Display microphone activity level above the sound settings</string>
+    <string name="pref_title_display_show_ping_no_server">Show ping without server</string>
+    <string name="pref_summary_display_show_ping_no_server">Show ping indicator without entering a server</string>
+
+    <!-- Welcome screen -->
+    <string name="welcome_title">Welcome to TeamTalk Pro+</string>
+    <string name="welcome_description">modification of the official teamtalk 5 client</string>
+    <string name="welcome_features">• Spam protection: automatically unsubscribes from spammers with configurable message limits\n• Sound themes: customize sound events for actions, or use the silent mode\n• Administration: manage accounts, banned users, and server settings like on PC\n• Local playback: redesigned local audio player with easy playback control\n• Other: rewritten screens and improved dark theme</string>
+    <string name="welcome_skip">Skip</string>
+    <string name="welcome_next">Next</string>
+    <string name="welcome_finish">Finish</string>
+    <string name="welcome_settings_title">Basic Settings</string>
+    <string name="welcome_settings_description">Configure basic settings. You can change these later in preferences.</string>
+    <string name="welcome_settings_nickname_label">Nickname</string>
+    <string name="welcome_settings_nickname_hint">Enter your nickname</string>
+    <string name="welcome_settings_gender_female">Female gender</string>
+    <string name="welcome_settings_keep_screen">Keep screen on</string>
+    <string name="welcome_settings_vibrate">Vibrate on voice transmission</string>
+    <string name="welcome_import_title">Setup Complete</string>
+    <string name="welcome_import_description">All basic parameters successfully configured. You can now connect to a server.</string>
+    <string name="welcome_import_tt_file">Import .tt file</string>
+
 </resources>
+

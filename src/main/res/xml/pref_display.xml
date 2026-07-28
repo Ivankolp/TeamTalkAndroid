@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory
+        android:key="display_indicators"
+        android:title="@string/pref_category_display_indicators">
+
+        <CheckBoxPreference
+            android:key="display_show_mic_activity"
+            android:title="@string/pref_title_display_show_mic_activity"
+            android:summary="@string/pref_summary_display_show_mic_activity"
+            android:defaultValue="false" />
+
+        <CheckBoxPreference
+            android:key="display_show_ping_no_server"
+            android:title="@string/pref_title_display_show_ping_no_server"
+            android:summary="@string/pref_summary_display_show_ping_no_server"
+            android:defaultValue="false" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

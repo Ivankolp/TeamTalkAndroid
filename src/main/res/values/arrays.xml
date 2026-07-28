@@ -20,4 +20,51 @@
         <item>custom</item>
         <item>silent</item>
     </string-array>
+    <string-array name="audio_input_source_entries">
+        <item>Microphone</item>
+        <item>Internal Audio</item>
+        <item>Mixed (Mic + Internal)</item>
+    </string-array>
+    <string-array name="audio_input_source_values">
+        <item>mic</item>
+        <item>internal</item>
+        <item>mixed</item>
+    </string-array>
+    <string-array name="recording_format_entries">
+        <item>WAV (uncompressed)</item>
+        <item>MP3</item>
+        <item>Channel Codec Format</item>
+    </string-array>
+    <string-array name="recording_format_values">
+        <item>wav</item>
+        <item>mp3</item>
+        <item>codec</item>
+    </string-array>
+    <string-array name="recording_mp3_bitrate_entries">
+        <item>16 kbps</item>
+        <item>32 kbps</item>
+        <item>64 kbps</item>
+        <item>128 kbps</item>
+        <item>256 kbps</item>
+        <item>320 kbps</item>
+    </string-array>
+    <string-array name="recording_mp3_bitrate_values">
+        <item>16</item>
+        <item>32</item>
+        <item>64</item>
+        <item>128</item>
+        <item>256</item>
+        <item>320</item>
+    </string-array>
+    
+    <string-array name="display_button_size_entries">
+        <item>Small</item>
+        <item>Medium</item>
+        <item>Large</item>
+    </string-array>
+    <string-array name="display_button_size_values">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
+    </string-array>
 </resources>

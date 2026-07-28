@@ -57,4 +57,13 @@
         app:showAsAction="never"
         android:title="@string/action_server_stats"/>
 
+    <item
+        android:id="@+id/action_start_recording"
+        app:showAsAction="never"
+        android:title="@string/action_start_recording"/>
+    <item
+        android:id="@+id/action_stop_recording"
+        app:showAsAction="never"
+        android:title="@string/action_stop_recording"/>
+
 </menu>

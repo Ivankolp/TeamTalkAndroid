@@ -58,6 +58,10 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
     private boolean seekBarTouching;
     private Handler handler = new Handler();
     private Runnable progressUpdater;
+    private dk.bearware.events.ClientEventListener.OnStreamMediaFileListener streamMediaFileListener;
+    private dk.bearware.events.ClientEventListener.OnLocalMediaFileListener localMediaFileListener;
+    private java.util.List<Uri> playlistUris = new java.util.ArrayList<>();
+    private int playlistIndex = 0;
 
     TeamTalkService getService() {
         return mConnection.getService();
@@ -142,6 +146,13 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
     }
 
     @Override
+    public boolean onSupportNavigateUp() {
+        stopLocalPlayback();
+        finish();
+        return true;
+    }
+
+    @Override
     protected void onStart() {
         super.onStart();
         if (!mConnection.isBound()) {
@@ -185,8 +196,40 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
 
     @Override
     public void onServiceConnected(TeamTalkService service) {
-        getService().getEventHandler().registerOnStreamMediaFile(mfi -> runOnUiThread(() -> onStreamMediaFile(mfi)), true);
-        getService().getEventHandler().registerOnLocalMediaFile(mfi -> runOnUiThread(() -> onLocalMediaFile(mfi)), true);
+        streamMediaFileListener = mfi -> runOnUiThread(() -> onStreamMediaFile(mfi));
+        localMediaFileListener = mfi -> runOnUiThread(() -> onLocalMediaFile(mfi));
+        getService().getEventHandler().registerOnStreamMediaFile(streamMediaFileListener, true);
+        getService().getEventHandler().registerOnLocalMediaFile(localMediaFileListener, true);
+
+        // Restore active playback or streaming state from service
+        if (service.isStreamingMedia() || service.getLocalPlaybackId() > 0) {
+            String path = service.getCurrentStreamPath();
+            if (path != null && !path.isEmpty()) {
+                file_path.setText(path);
+                mMediaFileInfo = service.getCurrentMediaFileInfo();
+                mPlayback = service.getCurrentPlayback();
+                localPlaybackId = service.getLocalPlaybackId();
+                isStreaming = service.isStreamingMedia();
+
+                if (mMediaFileInfo != null) {
+                    showMediaFileInfo(mMediaFileInfo);
+                    updateSeekBar();
+                    updateSeekBarPosition(mMediaFileInfo.uElapsedMSec);
+                }
+
+                if (isStreaming) {
+                    btnStream.setText(R.string.action_stop);
+                }
+
+                if (localPlaybackId > 0) {
+                    btnStop.setEnabled(true);
+                    if (mPlayback != null) {
+                        btnPlayPause.setText(mPlayback.bPaused ? R.string.action_play : R.string.action_pause);
+                    }
+                    startProgressUpdater();
+                }
+            }
+        }
 
         btnSelectFile.setOnClickListener(v -> {
             if ((Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ?
@@ -205,33 +248,86 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
 
     @Override
     public void onServiceDisconnected(TeamTalkService service) {
+        if (service != null && service.getEventHandler() != null) {
+            if (streamMediaFileListener != null) {
+                service.getEventHandler().registerOnStreamMediaFile(streamMediaFileListener, false);
+            }
+            if (localMediaFileListener != null) {
+                service.getEventHandler().registerOnLocalMediaFile(localMediaFileListener, false);
+            }
+        }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if ((requestCode == REQUEST_STREAM_MEDIA) && (resultCode == RESULT_OK)) {
-            Uri uri = data.getData();
-            String path = AbsolutePathHelper.getRealPath(this.getBaseContext(), uri);
-            if (path == null && uri != null) {
-                path = copyUriToCache(uri);
-            }
-            if (path != null) {
-                file_path.setText(path);
-                loadMediaFileInfo(path);
-            } else {
-                Toast.makeText(this, R.string.err_stream_media, Toast.LENGTH_LONG).show();
+            if (data == null) return;
+            
+            playlistUris.clear();
+            playlistIndex = 0;
+
+            if (data.getClipData() != null) {
+                int count = data.getClipData().getItemCount();
+                for (int i = 0; i < count; i++) {
+                    playlistUris.add(data.getClipData().getItemAt(i).getUri());
+                }
+                playPlaylistCurrent();
+            } else if (data.getData() != null) {
+                playlistUris.add(data.getData());
+                playPlaylistCurrent();
             }
         } else {
             super.onActivityResult(requestCode, resultCode, data);
         }
     }
 
+    private String getFileNameAndExtension(Uri uri) {
+        String result = null;
+        if ("content".equals(uri.getScheme())) {
+            try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                    if (nameIndex >= 0) {
+                        result = cursor.getString(nameIndex);
+                    }
+                }
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            if (result != null) {
+                int cut = result.lastIndexOf('/');
+                if (cut != -1) {
+                    result = result.substring(cut + 1);
+                }
+            }
+        }
+        return result;
+    }
+
     private String copyUriToCache(Uri uri) {
         try {
             InputStream is = getContentResolver().openInputStream(uri);
             if (is == null) return null;
+            
+            String fileName = getFileNameAndExtension(uri);
+            String extension = ".tmp";
+            String prefix = "media_";
+            if (fileName != null) {
+                int dotIndex = fileName.lastIndexOf('.');
+                if (dotIndex != -1) {
+                    extension = fileName.substring(dotIndex);
+                    prefix = fileName.substring(0, dotIndex);
+                    if (prefix.length() < 3) {
+                        prefix = "media_" + prefix;
+                    }
+                }
+            }
+
             File cacheDir = getCacheDir();
-            File tempFile = File.createTempFile("media_", ".tmp", cacheDir);
+            File tempFile = File.createTempFile(prefix + "_", extension, cacheDir);
             FileOutputStream os = new FileOutputStream(tempFile);
             byte[] buf = new byte[8192];
             int len;
@@ -251,6 +347,7 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         Intent i = Intent.createChooser(intent, "File");
         startActivityForResult(i, REQUEST_STREAM_MEDIA);
     }
@@ -267,6 +364,15 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
     }
 
     private void loadMediaFileInfo(String path) {
+        if (path.startsWith("http://") || path.startsWith("https://")) {
+            mMediaFileInfo = null;
+            txtMediaInfo.setText(R.string.msg_streaming_url);
+            txtMediaInfo.setVisibility(View.VISIBLE);
+            txtDuration.setText("--:--");
+            seekBar.setEnabled(false);
+            return;
+        }
+
         MediaFileInfo info = new MediaFileInfo();
         if (TeamTalkBase.getMediaFileInfo(path, info)) {
             mMediaFileInfo = info;
@@ -306,6 +412,11 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
             isStreaming = false;
             btnStream.setText(R.string.button_stream_media_file);
             Toast.makeText(this, R.string.msg_stream_stopped, Toast.LENGTH_SHORT).show();
+            if (getService() != null) {
+                getService().setStreamingMedia(false);
+                getService().setCurrentStreamPath("");
+                getService().setCurrentMediaFileInfo(null);
+            }
         } else {
             String path = file_path.getText().toString();
             if (path.isEmpty()) return;
@@ -326,6 +437,11 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
                 isStreaming = true;
                 btnStream.setText(R.string.action_stop);
                 Toast.makeText(this, R.string.msg_stream_started, Toast.LENGTH_SHORT).show();
+                if (getService() != null) {
+                    getService().setStreamingMedia(true);
+                    getService().setCurrentStreamPath(path);
+                    getService().setCurrentMediaFileInfo(mMediaFileInfo);
+                }
             }
         }
     }
@@ -339,19 +455,32 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
             mPlayback.uOffsetMSec = -1;
             if (getClient().updateLocalPlayback(localPlaybackId, mPlayback)) {
                 btnPlayPause.setText(mPlayback.bPaused ? R.string.action_play : R.string.action_pause);
+                if (getService() != null) {
+                    getService().setCurrentPlayback(mPlayback);
+                }
             }
         } else {
-            if (mMediaFileInfo == null) {
+            if (mMediaFileInfo == null && !path.startsWith("http://") && !path.startsWith("https://")) {
                 loadMediaFileInfo(path);
             }
             mPlayback = new MediaFilePlayback();
             mPlayback.bPaused = false;
-            mPlayback.uOffsetMSec = (int) ((long) mMediaFileInfo.uDurationMSec * seekBar.getProgress() / seekBar.getMax());
+            if (mMediaFileInfo != null) {
+                mPlayback.uOffsetMSec = (int) ((long) mMediaFileInfo.uDurationMSec * seekBar.getProgress() / seekBar.getMax());
+            } else {
+                mPlayback.uOffsetMSec = 0;
+            }
             localPlaybackId = getClient().initLocalPlayback(path, mPlayback);
             if (localPlaybackId > 0) {
                 btnPlayPause.setText(R.string.action_pause);
                 btnStop.setEnabled(true);
                 startProgressUpdater();
+                if (getService() != null) {
+                    getService().setLocalPlaybackId(localPlaybackId);
+                    getService().setCurrentStreamPath(path);
+                    getService().setCurrentMediaFileInfo(mMediaFileInfo);
+                    getService().setCurrentPlayback(mPlayback);
+                }
             } else {
                 Toast.makeText(this, R.string.err_play_media, Toast.LENGTH_LONG).show();
             }
@@ -362,6 +491,11 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
         if (localPlaybackId > 0) {
             getClient().stopLocalPlayback(localPlaybackId);
             localPlaybackId = 0;
+            if (getService() != null) {
+                getService().setLocalPlaybackId(0);
+                getService().setCurrentPlayback(null);
+                getService().setCurrentMediaFileInfo(null);
+            }
         }
         btnPlayPause.setText(R.string.action_play);
         btnStop.setEnabled(false);
@@ -372,6 +506,9 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
 
     private void onStreamMediaFile(MediaFileInfo mfi) {
         mMediaFileInfo = mfi;
+        if (getService() != null) {
+            getService().setCurrentMediaFileInfo(mfi);
+        }
         if (mfi.uDurationMSec > 0) {
             txtDuration.setText(formatDuration(mfi.uDurationMSec));
             if (!seekBarTouching)
@@ -389,12 +526,24 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
             case MediaFileStatus.MFS_ABORTED:
                 isStreaming = false;
                 btnStream.setText(R.string.button_stream_media_file);
+                if (getService() != null) {
+                    getService().setStreamingMedia(false);
+                    getService().setCurrentStreamPath("");
+                    getService().setCurrentMediaFileInfo(null);
+                }
+                if (!playlistUris.isEmpty() && playlistIndex < playlistUris.size() - 1) {
+                    playlistIndex++;
+                    playPlaylistCurrent();
+                }
                 break;
         }
     }
 
     private void onLocalMediaFile(MediaFileInfo mfi) {
         mMediaFileInfo = mfi;
+        if (getService() != null) {
+            getService().setCurrentMediaFileInfo(mfi);
+        }
         if (!seekBarTouching && mfi.uDurationMSec > 0)
             updateSeekBarPosition(mfi.uElapsedMSec);
 
@@ -416,6 +565,11 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
                 if (!seekBarTouching) {
                     seekBar.setProgress(0);
                     txtPosition.setText("00:00");
+                }
+                if (getService() != null) {
+                    getService().setLocalPlaybackId(0);
+                    getService().setCurrentPlayback(null);
+                    getService().setCurrentMediaFileInfo(null);
                 }
                 break;
         }
@@ -456,5 +610,43 @@ extends AppCompatActivity implements TeamTalkConnectionListener {
         int min = sec / 60;
         sec = sec % 60;
         return String.format("%02d:%02d", min, sec);
+    }
+
+    private void playPlaylistCurrent() {
+        if (playlistUris.isEmpty() || playlistIndex >= playlistUris.size()) return;
+        Uri uri = playlistUris.get(playlistIndex);
+        String path = AbsolutePathHelper.getRealPath(this.getBaseContext(), uri);
+        if (path == null && uri != null) {
+            path = copyUriToCache(uri);
+        }
+        if (path != null) {
+            file_path.setText(path);
+            loadMediaFileInfo(path);
+            Toast.makeText(this, getString(R.string.msg_playlist_playing, (playlistIndex + 1), playlistUris.size()), Toast.LENGTH_SHORT).show();
+
+            if (isStreaming) {
+                getClient().stopStreamingMediaFileToChannel();
+
+                VideoCodec videocodec = new VideoCodec();
+                videocodec.nCodec = Codec.NO_CODEC;
+                if (mMediaFileInfo != null && mMediaFileInfo.videoFmt != null && mMediaFileInfo.videoFmt.picFourCC != 0) {
+                    videocodec.nCodec = Codec.WEBM_VP8_CODEC;
+                }
+
+                if (!getClient().startStreamingMediaFileToChannel(path, videocodec)) {
+                    Toast.makeText(this, R.string.err_stream_media, Toast.LENGTH_LONG).show();
+                    isStreaming = false;
+                    btnStream.setText(R.string.button_stream_media_file);
+                } else {
+                    isStreaming = true;
+                    btnStream.setText(R.string.action_stop);
+                    if (getService() != null) {
+                        getService().setStreamingMedia(true);
+                        getService().setCurrentStreamPath(path);
+                        getService().setCurrentMediaFileInfo(mMediaFileInfo);
+                    }
+                }
+            }
+        }
     }
 }

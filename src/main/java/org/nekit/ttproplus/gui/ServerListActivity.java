@@ -131,6 +131,13 @@ public class ServerListActivity extends AppCompatActivity
         setupSearch();
         setTitle(R.string.title_activity_server_list);
         executorService = Executors.newFixedThreadPool(2);
+
+        // Show welcome screen on first launch
+        SharedPreferences appPrefs = PreferenceManager.getDefaultSharedPreferences(this);
+        if (!appPrefs.getBoolean(Preferences.PREF_WELCOME_SHOWN, false)) {
+            Intent welcomeIntent = new Intent(this, WelcomeActivity.class);
+            startActivity(welcomeIntent);
+        }
     }
 
     private void initializeViews() {
@@ -208,6 +215,7 @@ public class ServerListActivity extends AppCompatActivity
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        setIntent(intent);
 
         if (intent.getData() != null) {
             loadServerFromUri(intent.getData());
@@ -328,14 +336,28 @@ public class ServerListActivity extends AppCompatActivity
                     catch (Exception ex) {
                     }
                     Vector<ServerEntry> entries = Utils.getXmlServerEntries(xml.toString());
-                    if (entries != null) {
-                        for (ServerEntry entry : entries) {
-                            entry.servertype = ServerEntry.ServerType.LOCAL;
+                    processImportedServers(entries);
+                }
+                break;
+            case REQUEST_CUSTOM_FILE_PICKER:
+                if (resultCode == RESULT_OK && data != null) {
+                    String filePath = data.getStringExtra(CustomFilePickerActivity.EXTRA_FILE_PATH);
+                    if (filePath != null) {
+                        try {
+                            File file = new File(filePath);
+                            StringBuilder xml = new StringBuilder();
+                            try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
+                                BufferedReader source = new BufferedReader(new java.io.InputStreamReader(fis));
+                                String line;
+                                while ((line = source.readLine()) != null) {
+                                    xml.append(line);
+                                }
+                            }
+                            Vector<ServerEntry> entries = Utils.getXmlServerEntries(xml.toString());
+                            processImportedServers(entries);
+                        } catch (Exception e) {
+                            Toast.makeText(this, R.string.err_stream_media, Toast.LENGTH_LONG).show();
                         }
-                        servers.addAll(entries);
-                        Collections.sort(servers, this);
-                        adapter.updateServers();
-                        saveServers();
                     }
                 }
                 break;
@@ -415,6 +437,36 @@ public class ServerListActivity extends AppCompatActivity
     }
 
     private void loadServerFromUri(Uri uri) {
+        if (uri == null) return;
+
+        String scheme = uri.getScheme();
+        String path = uri.getPath();
+
+        if ("file".equalsIgnoreCase(scheme) || "content".equalsIgnoreCase(scheme) || (path != null && path.toLowerCase().endsWith(".tt"))) {
+            StringBuilder xml = new StringBuilder();
+            try (InputStream inputStream = this.getContentResolver().openInputStream(uri)) {
+                if (inputStream != null) {
+                    BufferedReader source = new BufferedReader(new InputStreamReader(inputStream));
+                    String line;
+                    while ((line = source.readLine()) != null) {
+                        xml.append(line);
+                    }
+                    source.close();
+                }
+            } catch (Exception ex) {
+                Log.e(TAG, "Failed to read .tt file from URI: " + uri, ex);
+            }
+
+            Vector<ServerEntry> entries = Utils.getXmlServerEntries(xml.toString());
+            if (entries != null && !entries.isEmpty()) {
+                getIntent().setData(null);
+                processImportedServers(entries);
+            } else {
+                Toast.makeText(this, "Failed to parse .tt file", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+
         ServerEntry entry = new ServerEntry();
         String host = uri.getHost();
         
@@ -434,6 +486,7 @@ public class ServerListActivity extends AppCompatActivity
         entry.encrypted = encrypted != null && (encrypted.equalsIgnoreCase("true") || encrypted.equals("1"));
 
         this.serverentry = entry;
+        getIntent().setData(null);
         Log.i(TAG, "Connecting to " + entry.servername);
     }
 
@@ -880,12 +933,62 @@ public class ServerListActivity extends AppCompatActivity
         return 0;
     }
 
+    private static final int REQUEST_CUSTOM_FILE_PICKER = 5;
+
+    private void openCustomFileManager() {
+        Intent intent = new Intent(this, CustomFilePickerActivity.class);
+        startActivityForResult(intent, REQUEST_CUSTOM_FILE_PICKER);
+    }
+
+    private void processImportedServers(final Vector<ServerEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            Toast.makeText(this, R.string.err_stream_media, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(R.string.tt_file_action_title);
+        builder.setMessage(R.string.tt_file_action_message);
+
+        builder.setPositiveButton(R.string.tt_file_action_import, (dialog, which) -> {
+            for (ServerEntry entry : entries) {
+                entry.servertype = ServerEntry.ServerType.LOCAL;
+            }
+            servers.addAll(entries);
+            Collections.sort(servers, this);
+            adapter.updateServers();
+            saveServers();
+            Toast.makeText(this, R.string.servers_imported_successfully, Toast.LENGTH_SHORT).show();
+        });
+
+        builder.setNegativeButton(R.string.tt_file_action_connect_only, (dialog, which) -> {
+            ServerEntry firstEntry = entries.get(0);
+            firstEntry.servertype = ServerEntry.ServerType.LOCAL;
+            onServerClick(firstEntry);
+        });
+
+        builder.show();
+    }
+
     private void fileSelectionStart() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        Intent i = Intent.createChooser(intent, "File");
-        startActivityForResult(i, REQUEST_IMPORT_SERVERLIST);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(R.string.import_method_title);
+        String[] options = {
+            getString(R.string.import_method_custom),
+            getString(R.string.import_method_system)
+        };
+        builder.setItems(options, (dialog, which) -> {
+            if (which == 0) {
+                openCustomFileManager();
+            } else {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                Intent i = Intent.createChooser(intent, "File");
+                startActivityForResult(i, REQUEST_IMPORT_SERVERLIST);
+            }
+        });
+        builder.show();
     }
 
     private void exportServers() {

@@ -10,4 +10,33 @@
         <item>Пользовательский</item>
         <item>Без звука</item>
     </string-array>
+    <string-array name="audio_input_source_entries">
+        <item>Микрофон</item>
+        <item>Внутренний звук</item>
+        <item>Смешанный (микрофон + внутр. звук)</item>
+    </string-array>
+    <string-array name="recording_format_entries">
+        <item>WAV (без сжатия)</item>
+        <item>MP3</item>
+        <item>Формат кодека канала</item>
+    </string-array>
+    <string-array name="recording_mp3_bitrate_entries">
+        <item>16 кбит/с</item>
+        <item>32 кбит/с</item>
+        <item>64 кбит/с</item>
+        <item>128 кбит/с</item>
+        <item>256 кбит/с</item>
+        <item>320 кбит/с</item>
+    </string-array>
+    
+    <string-array name="display_button_size_entries">
+        <item>Маленький</item>
+        <item>Средний</item>
+        <item>Большой</item>
+    </string-array>
+    <string-array name="display_button_size_values">
+        <item>small</item>
+        <item>medium</item>
+        <item>large</item>
+    </string-array>
 </resources>

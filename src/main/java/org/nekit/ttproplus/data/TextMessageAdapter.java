@@ -231,7 +231,9 @@ public class TextMessageAdapter extends BaseAdapter {
         }
 
         convertView.setBackgroundColor(bg_color);
-        convertView.setAccessibilityDelegate(accessibilityAssistant);
+        if (accessibilityAssistant != null) {
+            convertView.setAccessibilityDelegate(accessibilityAssistant);
+        }
 
         return convertView;
     }
@@ -261,11 +263,15 @@ public class TextMessageAdapter extends BaseAdapter {
         if(now - lastNotifyTime >= THROTTLE_MS) {
             lastNotifyTime = now;
             flushPending = false;
-            accessibilityAssistant.lockEvents();
+            if (accessibilityAssistant != null) {
+                accessibilityAssistant.lockEvents();
+            }
             super.notifyDataSetChanged();
             if(autoScroll && listView != null && filteredIndices.size() > 0)
                 listView.setSelection(filteredIndices.size() - 1);
-            accessibilityAssistant.unlockEvents();
+            if (accessibilityAssistant != null) {
+                accessibilityAssistant.unlockEvents();
+            }
         }
         else if(!flushPending) {
             flushPending = true;
@@ -276,10 +282,14 @@ public class TextMessageAdapter extends BaseAdapter {
     private void flushNow() {
         flushPending = false;
         lastNotifyTime = SystemClock.uptimeMillis();
-        accessibilityAssistant.lockEvents();
+        if (accessibilityAssistant != null) {
+            accessibilityAssistant.lockEvents();
+        }
         super.notifyDataSetChanged();
         if(autoScroll && listView != null && filteredIndices.size() > 0)
             listView.setSelection(filteredIndices.size() - 1);
-        accessibilityAssistant.unlockEvents();
+        if (accessibilityAssistant != null) {
+            accessibilityAssistant.unlockEvents();
+        }
     }
 }
