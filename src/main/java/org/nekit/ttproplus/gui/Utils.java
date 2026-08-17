@@ -25,6 +25,8 @@ package org.nekit.ttproplus.gui;
 import org.nekit.ttproplus.R;
 
 import android.content.Context;
+import android.app.Activity;
+import androidx.appcompat.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
@@ -788,5 +790,112 @@ public class Utils {
     public static boolean isWebLogin(String username) {
         return username.equals(AppInfo.WEBLOGIN_BEARWARE_USERNAME) ||
                 username.endsWith(AppInfo.WEBLOGIN_BEARWARE_USERNAMEPOSTFIX);
+    }
+
+    public static void showFilePicker(final Activity activity, final int requestCodeSystem, final int requestCodeBuiltin, final boolean folderMode, final String mimeType) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
+        String defaultManager = prefs.getString(Preferences.PREF_GENERAL_DEFAULT_FILE_MANAGER, "ask");
+        if ("system".equals(defaultManager)) {
+            openSystemFilePicker(activity, requestCodeSystem, folderMode, mimeType);
+        } else if ("builtin".equals(defaultManager)) {
+            openBuiltinFilePicker(activity, requestCodeBuiltin, folderMode);
+        } else {
+            new AlertDialog.Builder(activity)
+                .setTitle(R.string.title_choose_file_manager)
+                .setItems(new String[]{activity.getString(R.string.option_builtin_file_manager), activity.getString(R.string.option_system_file_manager)}, (dialog, which) -> {
+                    if (which == 0) {
+                        openBuiltinFilePicker(activity, requestCodeBuiltin, folderMode);
+                    } else {
+                        openSystemFilePicker(activity, requestCodeSystem, folderMode, mimeType);
+                    }
+                })
+                .show();
+        }
+    }
+
+    public static void showFilePicker(final android.app.Fragment fragment, final int requestCodeSystem, final int requestCodeBuiltin, final boolean folderMode, final String mimeType) {
+        Activity activity = fragment.getActivity();
+        if (activity == null) {
+            return;
+        }
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
+        String defaultManager = prefs.getString(Preferences.PREF_GENERAL_DEFAULT_FILE_MANAGER, "ask");
+        if ("system".equals(defaultManager)) {
+            openSystemFilePicker(fragment, requestCodeSystem, folderMode, mimeType);
+        } else if ("builtin".equals(defaultManager)) {
+            openBuiltinFilePicker(fragment, requestCodeBuiltin, folderMode);
+        } else {
+            new AlertDialog.Builder(activity)
+                .setTitle(R.string.title_choose_file_manager)
+                .setItems(new String[]{activity.getString(R.string.option_builtin_file_manager), activity.getString(R.string.option_system_file_manager)}, (dialog, which) -> {
+                    if (which == 0) {
+                        openBuiltinFilePicker(fragment, requestCodeBuiltin, folderMode);
+                    } else {
+                        openSystemFilePicker(fragment, requestCodeSystem, folderMode, mimeType);
+                    }
+                })
+                .show();
+        }
+    }
+
+    private static void openSystemFilePicker(Activity activity, int requestCode, boolean folderMode, String mimeType) {
+        try {
+            Intent intent = createSystemFilePickerIntent(folderMode, mimeType);
+            activity.startActivityForResult(intent, requestCode);
+        } catch (Exception e) {
+            Toast.makeText(activity, "Error opening system file picker", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static void openSystemFilePicker(android.app.Fragment fragment, int requestCode, boolean folderMode, String mimeType) {
+        try {
+            Intent intent = createSystemFilePickerIntent(folderMode, mimeType);
+            fragment.startActivityForResult(intent, requestCode);
+        } catch (Exception e) {
+            if (fragment.getActivity() != null) {
+                Toast.makeText(fragment.getActivity(), "Error opening system file picker", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private static Intent createSystemFilePickerIntent(boolean folderMode, String mimeType) {
+        if (folderMode) {
+            return new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        }
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mimeType != null ? mimeType : "*/*");
+        return intent;
+    }
+
+    private static void openBuiltinFilePicker(Activity activity, int requestCode, boolean folderMode) {
+        try {
+            Intent intent = createBuiltinFilePickerIntent(activity, folderMode);
+            activity.startActivityForResult(intent, requestCode);
+        } catch (Exception e) {
+            Toast.makeText(activity, "Error opening built-in file picker", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static void openBuiltinFilePicker(android.app.Fragment fragment, int requestCode, boolean folderMode) {
+        try {
+            if (fragment.getActivity() == null) {
+                return;
+            }
+            Intent intent = createBuiltinFilePickerIntent(fragment.getActivity(), folderMode);
+            fragment.startActivityForResult(intent, requestCode);
+        } catch (Exception e) {
+            if (fragment.getActivity() != null) {
+                Toast.makeText(fragment.getActivity(), "Error opening built-in file picker", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private static Intent createBuiltinFilePickerIntent(Context context, boolean folderMode) {
+        Intent intent = new Intent(context, CustomFilePickerActivity.class);
+        if (folderMode) {
+            intent.putExtra(CustomFilePickerActivity.EXTRA_FOLDER_MODE, true);
+        }
+        return intent;
     }
 }

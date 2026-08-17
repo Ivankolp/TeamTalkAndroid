@@ -23,14 +23,16 @@ android {
 
     signingConfigs {
         release {
-            storeFile = file('release.keystore')
-            storePassword = 'android'
-            keyAlias = 'release'
-            keyPassword = 'android'
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
-            enableV4Signing = true
+            if (file('release.keystore').exists()) {
+                storeFile = file('release.keystore')
+                storePassword = 'android'
+                keyAlias = 'release'
+                keyPassword = 'android'
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
         }
     }
 
@@ -83,6 +85,7 @@ dependencies {
     implementation libs.androidx.preference
     implementation libs.androidx.viewpager
     implementation libs.material
+    implementation libs.jump3r
     implementation files('libs/TeamTalk5.jar')
 
     testImplementation libs.junit
